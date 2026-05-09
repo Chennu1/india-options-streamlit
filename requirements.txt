@@ -1,0 +1,7 @@
+streamlit>=1.44.0
+requests>=2.31.0
+smartapi-python>=1.5.5
+pyotp>=2.9.0
+logzero>=1.7.0
+websocket-client>=1.8.0
+pycryptodome>=3.20.0
