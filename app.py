@@ -6,6 +6,7 @@ import textwrap
 import pandas as pd
 import streamlit as st
 
+from gemini_advisor import GeminiAdvisorError, GeminiBrief, generate_gemini_brief
 from market_data import (
     MarketDataError,
     fetch_angel_snapshot,
@@ -322,6 +323,20 @@ def render_sidebar() -> MarketView:
             lot_size = st.number_input("Lot size", min_value=1, value=int(defaults["lot_size"]), step=1)
             experience = st.selectbox("Experience", ["Beginner", "Intermediate", "Advanced"])
 
+        with st.expander("Gemini AI Brief", expanded=False):
+            st.text_input(
+                "Gemini API key",
+                value=get_secret("GEMINI_API_KEY"),
+                key="gemini_api_key",
+                type="password",
+            )
+            st.text_input(
+                "Gemini model",
+                value=get_secret("GEMINI_MODEL") or "gemini-2.0-flash",
+                key="gemini_model",
+            )
+            st.caption("Used only when you click Generate AI Brief. Do not commit keys to GitHub.")
+
     if snapshot:
         st.session_state["last_snapshot"] = snapshot
 
@@ -350,11 +365,13 @@ def render_dashboard(view: MarketView, suggestions: list[StrategyIdea]) -> None:
     snapshot = st.session_state.get("last_snapshot")
     render_status_strip(view, snapshot)
     render_best_setup(view, suggestions, snapshot)
-    tab_signals, tab_chain, tab_risk, tab_playbook = st.tabs(
-        ["Strategy Signals", "Option Chain", "Risk Console", "Playbook"]
+    tab_signals, tab_ai, tab_chain, tab_risk, tab_playbook = st.tabs(
+        ["Strategy Signals", "AI Brief", "Option Chain", "Risk Console", "Playbook"]
     )
     with tab_signals:
         render_suggestions(view, suggestions, snapshot)
+    with tab_ai:
+        render_ai_brief(view, suggestions, snapshot)
     with tab_chain:
         if snapshot:
             render_option_chain_table(snapshot, expanded=True)
@@ -496,6 +513,59 @@ def render_risk_console(view: MarketView, suggestions: list[StrategyIdea]) -> No
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 
+def render_ai_brief(view: MarketView, suggestions: list[StrategyIdea], snapshot) -> None:
+    st.subheader("Gemini AI Brief")
+    st.write(
+        "Generate a concise market brief from the current inputs, strategy scores, and live option-chain summary."
+    )
+    key = st.session_state.get("gemini_api_key", "") or get_secret("GEMINI_API_KEY")
+    model = st.session_state.get("gemini_model", "") or get_secret("GEMINI_MODEL") or "gemini-2.0-flash"
+    col1, col2 = st.columns([1, 2])
+    generate = col1.button("Generate AI Brief", use_container_width=True, disabled=not bool(key.strip()))
+    col2.caption(f"Model: {model}. The brief is educational only and should be verified against live market data.")
+    if not key.strip():
+        st.info("Add a Gemini API key in the sidebar, environment, or Streamlit secrets.")
+
+    if generate:
+        with st.spinner("Asking Gemini for a cautious options brief..."):
+            try:
+                brief = generate_gemini_brief(
+                    view=view,
+                    suggestions=suggestions,
+                    snapshot_summary=snapshot_to_summary(snapshot),
+                    api_key=key,
+                    model=model,
+                )
+                st.session_state["gemini_brief"] = brief
+            except GeminiAdvisorError as exc:
+                st.error(str(exc))
+            except Exception as exc:
+                st.error(f"Gemini failed: {exc}")
+
+    brief = st.session_state.get("gemini_brief")
+    if brief:
+        render_gemini_brief(brief)
+
+
+def render_gemini_brief(brief: GeminiBrief) -> None:
+    st.markdown(f"### Setup Quality: {brief.setup_quality}")
+    st.write(brief.summary)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("**Top Risks**")
+        for item in brief.top_risks:
+            st.write(f"- {item}")
+    with col2:
+        st.markdown("**What To Watch**")
+        for item in brief.what_to_watch:
+            st.write(f"- {item}")
+    with col3:
+        st.markdown("**Trade Management**")
+        for item in brief.trade_management:
+            st.write(f"- {item}")
+    st.caption(f"{brief.disclaimer} Model: {brief.model}")
+
+
 def render_playbook() -> None:
     with st.expander("Trade Checklist"):
         st.markdown(
@@ -619,6 +689,22 @@ def fetch_live_snapshot(
     return fetch_option_chain(symbol, expiry)
 
 
+def snapshot_to_summary(snapshot) -> dict:
+    if not snapshot:
+        return {}
+    return {
+        "symbol": snapshot.symbol,
+        "spot": snapshot.spot,
+        "timestamp": snapshot.timestamp,
+        "selected_expiry": snapshot.selected_expiry,
+        "pcr": snapshot.pcr,
+        "support": snapshot.support,
+        "resistance": snapshot.resistance,
+        "avg_iv": snapshot.avg_iv,
+        "source": snapshot.source,
+    }
+
+
 def format_lots(value: int | None) -> str:
     if value is None:
         return "Check margin"
@@ -631,6 +717,15 @@ def format_breakevens(values: list[float]) -> str:
     if not values:
         return "Not found in chart range"
     return ", ".join(f"{value:,.2f}" for value in values)
+
+
+def get_secret(name: str) -> str:
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name])
+    except Exception:
+        pass
+    return os.getenv(name, "")
 
 
 if __name__ == "__main__":

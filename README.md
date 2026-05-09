@@ -14,6 +14,7 @@ A Streamlit app that generates rule-based options strategy ideas for Indian mark
 - Estimates a modelled risk per lot and lot count based on the user's risk budget
 - Builds live premium-based payoff charts when matching option quotes are available
 - Shows breakeven, net premium, max profit, and max loss estimates from live option LTP
+- Adds an optional Gemini AI brief for cautious market commentary and risk review
 - Shows entry filters, exit rules, and risk notes for each setup
 - Adds beginner guardrails and avoids naked short option suggestions
 
@@ -56,12 +57,32 @@ streamlit run app.py
 
 Do not commit real broker credentials to project files.
 
+Optional Gemini variables:
+
+```powershell
+$env:GEMINI_API_KEY="your_gemini_api_key"
+$env:GEMINI_MODEL="gemini-2.0-flash"
+streamlit run app.py
+```
+
+On Streamlit Cloud, add broker and Gemini keys under **App settings -> Secrets**:
+
+```toml
+ANGEL_API_KEY = "your_api_key"
+ANGEL_CLIENT_CODE = "your_client_code"
+ANGEL_PIN = "your_pin"
+ANGEL_TOTP_SECRET = "your_totp_secret"
+GEMINI_API_KEY = "your_gemini_api_key"
+GEMINI_MODEL = "gemini-2.0-flash"
+```
+
 ## Files
 
 - `app.py`: Streamlit user interface
 - `market_data.py`: NSE option-chain fetch and parsing helpers
 - `options_suggestion.py`: strategy and risk engine
 - `payoff.py`: option-leg parsing and expiry payoff calculations
+- `gemini_advisor.py`: Gemini market brief integration
 - `requirements.txt`: Python dependencies
 
 ## Notes
