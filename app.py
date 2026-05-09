@@ -39,45 +39,133 @@ def inject_css() -> None:
         """
         <style>
         :root {
-          --terminal-bg: #0f1419;
-          --panel-bg: #151b22;
-          --panel-border: #27313d;
-          --accent: #00b894;
-          --accent-2: #f2c94c;
-          --danger: #ff5c5c;
-          --muted: #9da8b3;
+          --page: #f4f7f6;
+          --ink: #17201d;
+          --ink-soft: #4e5c57;
+          --muted: #71817b;
+          --panel: #ffffff;
+          --line: #dce5e1;
+          --line-dark: #283531;
+          --terminal: #101816;
+          --terminal-2: #17211e;
+          --accent: #008f7a;
+          --accent-soft: #dff5ef;
+          --amber: #b7791f;
+          --amber-soft: #fff4d8;
+          --red: #c24141;
+          --red-soft: #ffe4e4;
+          --shadow: 0 14px 34px rgba(23, 32, 29, 0.08);
+        }
+        .stApp {
+          background: linear-gradient(180deg, #eef4f2 0, var(--page) 260px), var(--page);
         }
         .main .block-container {
-          max-width: 1380px;
-          padding-top: 1.25rem;
+          max-width: 1480px;
+          padding: 1rem 2rem 3rem;
         }
         .hero {
-          border: 1px solid var(--panel-border);
-          background: linear-gradient(135deg, #101820 0%, #151b22 62%, #1b242d 100%);
+          border: 1px solid var(--line-dark);
+          background:
+            linear-gradient(135deg, rgba(0, 143, 122, 0.18), transparent 36%),
+            linear-gradient(120deg, var(--terminal), var(--terminal-2));
           border-radius: 8px;
-          padding: 22px 24px;
-          margin-bottom: 18px;
+          padding: 22px 24px 18px;
+          margin-bottom: 12px;
+          box-shadow: var(--shadow);
+          color: #f7fbfa;
         }
         .hero h1 {
           margin: 0;
-          font-size: 2.15rem;
+          font-size: 2.25rem;
           letter-spacing: 0;
+          line-height: 1.05;
         }
         .hero p {
-          margin: 6px 0 0;
-          color: var(--muted);
+          margin: 8px 0 0;
+          color: #b8c8c3;
+          max-width: 78ch;
+        }
+        .hero-topline {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: start;
+        }
+        .terminal-badge {
+          display: inline-flex;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          color: #d8e8e4;
+          font-weight: 700;
+          font-size: 0.78rem;
+          white-space: nowrap;
+        }
+        .hero-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 18px;
+        }
+        .hero-kpi {
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.06);
+          border-radius: 8px;
+          padding: 10px 12px;
+        }
+        .hero-kpi span {
+          display: block;
+          color: #90a49e;
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          margin-bottom: 3px;
+        }
+        .hero-kpi strong {
+          color: #ffffff;
+          font-size: 0.98rem;
+        }
+        .notice-grid {
+          display: grid;
+          grid-template-columns: 1.15fr 1fr 0.95fr;
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+        .notice {
+          border-radius: 8px;
+          padding: 10px 12px;
+          border: 1px solid var(--line);
+          background: var(--panel);
+          color: var(--ink-soft);
+          font-size: 0.88rem;
+        }
+        .notice strong {
+          display: block;
+          color: var(--ink);
+          margin-bottom: 2px;
+          font-size: 0.82rem;
+          text-transform: uppercase;
+        }
+        .notice.risk {
+          background: var(--amber-soft);
+          border-color: #f0dca3;
+        }
+        .notice.live {
+          background: var(--accent-soft);
+          border-color: #bde8dd;
         }
         .status-strip {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: 1fr 1.25fr 1fr 1fr 1.35fr 1.2fr;
           gap: 10px;
-          margin: 12px 0 18px;
+          margin: 12px 0 10px;
         }
         .status-cell {
-          border: 1px solid var(--panel-border);
+          border: 1px solid var(--line);
           border-radius: 8px;
           padding: 12px 14px;
-          background: #111820;
+          background: var(--panel);
+          box-shadow: 0 8px 22px rgba(23, 32, 29, 0.04);
         }
         .status-label {
           color: var(--muted);
@@ -88,18 +176,44 @@ def inject_css() -> None:
         .status-value {
           font-size: 1.15rem;
           font-weight: 700;
+          color: var(--ink);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .status-value.accent {
+          color: var(--accent);
+        }
+        .section-title {
+          display: flex;
+          align-items: end;
+          justify-content: space-between;
+          gap: 16px;
+          margin: 20px 0 10px;
+        }
+        .section-title h3 {
+          margin: 0;
+          font-size: 1.05rem;
+          color: var(--ink);
+        }
+        .section-title span {
+          color: var(--muted);
+          font-size: 0.85rem;
         }
         .signal-card {
-          border: 1px solid var(--panel-border);
+          border: 1px solid var(--line);
           border-radius: 8px;
           padding: 16px;
-          background: #111820;
+          background: var(--panel);
           min-height: 100%;
+          box-shadow: 0 10px 24px rgba(23, 32, 29, 0.05);
+          margin-bottom: 8px;
         }
         .signal-title {
-          font-size: 1.05rem;
+          font-size: 1.08rem;
           font-weight: 800;
           margin-bottom: 2px;
+          color: var(--ink);
         }
         .signal-bias {
           color: var(--muted);
@@ -110,8 +224,8 @@ def inject_css() -> None:
           display: inline-block;
           padding: 3px 8px;
           border-radius: 999px;
-          background: rgba(0, 184, 148, 0.14);
-          color: #24d6b3;
+          background: var(--accent-soft);
+          color: var(--accent);
           font-weight: 700;
           font-size: 0.86rem;
         }
@@ -119,8 +233,8 @@ def inject_css() -> None:
           display: inline-block;
           padding: 3px 8px;
           border-radius: 999px;
-          background: rgba(242, 201, 76, 0.14);
-          color: #f2c94c;
+          background: var(--amber-soft);
+          color: var(--amber);
           font-weight: 700;
           font-size: 0.86rem;
           margin-left: 6px;
@@ -128,23 +242,101 @@ def inject_css() -> None:
         .leg-list {
           margin: 10px 0 0;
           padding-left: 18px;
+          color: var(--ink-soft);
         }
         .small-note {
           color: var(--muted);
           font-size: 0.86rem;
           margin-top: 10px;
         }
+        .best-shell,
+        .payoff-shell,
+        .ai-brief-card {
+          border: 1px solid var(--line);
+          background: var(--panel);
+          border-radius: 8px;
+          padding: 14px;
+          box-shadow: var(--shadow);
+        }
+        .payoff-shell {
+          border-color: #bde8dd;
+          background: linear-gradient(180deg, #ffffff, #f4fffb);
+        }
+        .quality-badge {
+          display: inline-block;
+          padding: 5px 10px;
+          border-radius: 999px;
+          font-weight: 800;
+          color: var(--accent);
+          background: var(--accent-soft);
+          margin-bottom: 8px;
+        }
         div[data-testid="stSidebar"] {
-          border-right: 1px solid var(--panel-border);
+          border-right: 1px solid var(--line-dark);
+          background: #121b18;
+        }
+        div[data-testid="stSidebar"] * {
+          color: #e8f0ed;
+        }
+        div[data-testid="stSidebar"] label,
+        div[data-testid="stSidebar"] p,
+        div[data-testid="stSidebar"] span {
+          color: #d1dfda;
+        }
+        div[data-testid="stSidebar"] [data-testid="stExpander"] {
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.04);
+        }
+        div[data-testid="stSidebar"] input,
+        div[data-testid="stSidebar"] textarea,
+        div[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+          background: #0d1412;
+          border-color: rgba(255, 255, 255, 0.16);
+        }
+        div[data-testid="stTabs"] button {
+          font-weight: 800;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+          gap: 6px;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab"] {
+          border: 1px solid var(--line);
+          border-radius: 8px 8px 0 0;
+          background: #ffffff;
+          padding: 8px 16px;
         }
         div[data-testid="stMetric"] {
-          border: 1px solid var(--panel-border);
+          border: 1px solid var(--line);
           border-radius: 8px;
           padding: 12px;
-          background: #111820;
+          background: var(--panel);
+          box-shadow: 0 8px 20px rgba(23, 32, 29, 0.04);
+        }
+        div[data-testid="stMetricValue"] {
+          color: var(--ink);
+          font-size: 1.35rem;
+        }
+        div[data-testid="stDataFrame"] {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 8px 20px rgba(23, 32, 29, 0.04);
+        }
+        div[data-testid="stAlert"] {
+          border-radius: 8px;
         }
         @media (max-width: 900px) {
+          .hero-topline { display: block; }
+          .terminal-badge { margin-top: 12px; }
+          .hero-grid,
+          .notice-grid,
           .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 560px) {
+          .hero-grid,
+          .notice-grid,
+          .status-strip { grid-template-columns: 1fr; }
         }
         </style>
         """,
@@ -156,24 +348,36 @@ def render_header() -> None:
     st.markdown(
         """
         <div class="hero">
-          <h1>India Options Strategy Desk</h1>
-          <p>Live-data aware options planning for NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, and stock options.</p>
+          <div class="hero-topline">
+            <div>
+              <h1>India Options Strategy Desk</h1>
+              <p>Live-data aware options planning for NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, and stock options.</p>
+            </div>
+            <div class="terminal-badge">Gemini 2.5 Flash Ready</div>
+          </div>
+          <div class="hero-grid">
+            <div class="hero-kpi"><span>Data providers</span><strong>Angel, NSE, Custom</strong></div>
+            <div class="hero-kpi"><span>Analytics</span><strong>Payoff + Breakeven</strong></div>
+            <div class="hero-kpi"><span>Strategies</span><strong>Defined Risk First</strong></div>
+            <div class="hero-kpi"><span>Deployment</span><strong>Streamlit Cloud</strong></div>
+          </div>
+        </div>
+        <div class="notice-grid">
+          <div class="notice risk">
+            <strong>Risk disclosure</strong>
+            Educational tool only. Not investment advice or a buy/sell recommendation.
+          </div>
+          <div class="notice live">
+            <strong>Live data</strong>
+            Broker/vendor feeds are preferred. NSE website polling is best-effort.
+          </div>
+          <div class="notice">
+            <strong>Market reference</strong>
+            When closed, use the latest close as the reference spot.
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
-    )
-    st.warning(
-        "Educational tool only. This is not investment advice, a buy/sell recommendation, "
-        "or a substitute for a SEBI-registered investment adviser. Verify live prices, "
-        "margins, lot sizes, liquidity, and risk before any trade."
-    )
-    st.info(
-        "Live mode polls NSE option-chain data on demand. Official low-latency real-time "
-        "market data requires a licensed NSE data feed, authorized vendor, or broker API."
-    )
-    st.caption(
-        "When the market is closed, use the latest close as the reference spot. "
-        "For NIFTY, the verified 8 May 2026 close was 24,176.15."
     )
 
 
@@ -387,13 +591,15 @@ def render_status_strip(view: MarketView, snapshot) -> None:
     risk_budget = view.capital * view.risk_percent / 100
     source = snapshot.source if snapshot else "Manual input"
     stamp = snapshot.timestamp if snapshot else "Latest close/manual"
+    expiry = snapshot.selected_expiry if snapshot else f"{view.days_to_expiry} days"
     st.markdown(
         f"""
         <div class="status-strip">
           <div class="status-cell"><div class="status-label">Underlying</div><div class="status-value">{view.symbol}</div></div>
-          <div class="status-cell"><div class="status-label">Spot</div><div class="status-value">{view.spot:,.2f}</div></div>
+          <div class="status-cell"><div class="status-label">Spot</div><div class="status-value accent">{view.spot:,.2f}</div></div>
           <div class="status-cell"><div class="status-label">Bias</div><div class="status-value">{view.direction}</div></div>
           <div class="status-cell"><div class="status-label">Risk Budget</div><div class="status-value">INR {risk_budget:,.0f}</div></div>
+          <div class="status-cell"><div class="status-label">Expiry</div><div class="status-value">{expiry}</div></div>
           <div class="status-cell"><div class="status-label">Data</div><div class="status-value">{source}</div></div>
         </div>
         <div class="small-note">Timestamp: {stamp}. Support {view.support:,.2f}, resistance {view.resistance:,.2f}, PCR {view.pcr:.2f}.</div>
@@ -409,10 +615,10 @@ def render_best_setup(view: MarketView, suggestions: list[StrategyIdea], snapsho
     payoff = build_payoff(best.legs, snapshot, view.spot, view.strike_step, view.lot_size)
     left, right = st.columns([1.3, 1.0])
     with left:
-        st.markdown("### Best Setup")
+        st.markdown('<div class="section-title"><h3>Best Setup</h3><span>highest scoring idea from the rule engine</span></div>', unsafe_allow_html=True)
         st.markdown(
             f"""
-            <div class="signal-card">
+            <div class="best-shell">
               <div class="signal-title">{best.name}</div>
               <div class="signal-bias">{best.bias}</div>
               <span class="score">Fit {best.score}/100</span>
@@ -424,11 +630,13 @@ def render_best_setup(view: MarketView, suggestions: list[StrategyIdea], snapsho
             unsafe_allow_html=True,
         )
     with right:
-        st.markdown("### Live Payoff Snapshot")
+        st.markdown('<div class="section-title"><h3>Live Payoff Snapshot</h3><span>premium-aware when quotes exist</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="payoff-shell">', unsafe_allow_html=True)
         if payoff:
             render_payoff_metrics(payoff)
         else:
             st.info("Load live option data to calculate premium-based payoff.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def render_market_summary(view: MarketView) -> None:
@@ -450,7 +658,7 @@ def render_market_summary(view: MarketView) -> None:
 
 
 def render_suggestions(view: MarketView, suggestions: list[StrategyIdea], snapshot) -> None:
-    st.subheader("Strategy Signals")
+    st.markdown('<div class="section-title"><h3>Strategy Signals</h3><span>expand each idea for execution rules and payoff</span></div>', unsafe_allow_html=True)
     for index, idea in enumerate(suggestions, start=1):
         st.markdown(
             f"""
@@ -483,7 +691,7 @@ def render_suggestions(view: MarketView, suggestions: list[StrategyIdea], snapsh
 
 
 def render_risk_console(view: MarketView, suggestions: list[StrategyIdea]) -> None:
-    st.subheader("Risk Console")
+    st.markdown('<div class="section-title"><h3>Risk Console</h3><span>position sizing and live payoff summary</span></div>', unsafe_allow_html=True)
     snapshot = st.session_state.get("last_snapshot")
     risk_budget = view.capital * view.risk_percent / 100
     best = suggestions[0] if suggestions else None
@@ -514,10 +722,8 @@ def render_risk_console(view: MarketView, suggestions: list[StrategyIdea]) -> No
 
 
 def render_ai_brief(view: MarketView, suggestions: list[StrategyIdea], snapshot) -> None:
-    st.subheader("Gemini AI Brief")
-    st.write(
-        "Generate a concise market brief from the current inputs, strategy scores, and live option-chain summary."
-    )
+    st.markdown('<div class="section-title"><h3>Gemini AI Brief</h3><span>cautious commentary from current inputs</span></div>', unsafe_allow_html=True)
+    st.write("Generate a concise market brief from the current inputs, strategy scores, and live option-chain summary.")
     key = st.session_state.get("gemini_api_key", "") or get_secret("GEMINI_API_KEY")
     model = st.session_state.get("gemini_model", "") or get_secret("GEMINI_MODEL") or "gemini-2.5-flash"
     col1, col2 = st.columns([1, 2])
@@ -548,8 +754,15 @@ def render_ai_brief(view: MarketView, suggestions: list[StrategyIdea], snapshot)
 
 
 def render_gemini_brief(brief: GeminiBrief) -> None:
-    st.markdown(f"### Setup Quality: {brief.setup_quality}")
-    st.write(brief.summary)
+    st.markdown(
+        f"""
+        <div class="ai-brief-card">
+          <div class="quality-badge">Setup Quality: {brief.setup_quality}</div>
+          <div>{brief.summary}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("**Top Risks**")
@@ -590,6 +803,7 @@ def render_playbook() -> None:
 
 def render_option_chain_table(snapshot, expanded: bool = False) -> None:
     with st.expander("Option Chain Near Spot", expanded=expanded):
+        st.caption("Rows are centered near spot. ATM, support, and resistance zones are highlighted when available.")
         table_rows = []
         for row in rows_near_spot(snapshot, width=10):
             ce = row.get("CE") or {}
