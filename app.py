@@ -332,7 +332,7 @@ def render_sidebar() -> MarketView:
             )
             st.text_input(
                 "Gemini model",
-                value=get_secret("GEMINI_MODEL") or "gemini-2.0-flash",
+                value=get_secret("GEMINI_MODEL") or "gemini-2.5-flash",
                 key="gemini_model",
             )
             st.caption("Used only when you click Generate AI Brief. Do not commit keys to GitHub.")
@@ -519,7 +519,7 @@ def render_ai_brief(view: MarketView, suggestions: list[StrategyIdea], snapshot)
         "Generate a concise market brief from the current inputs, strategy scores, and live option-chain summary."
     )
     key = st.session_state.get("gemini_api_key", "") or get_secret("GEMINI_API_KEY")
-    model = st.session_state.get("gemini_model", "") or get_secret("GEMINI_MODEL") or "gemini-2.0-flash"
+    model = st.session_state.get("gemini_model", "") or get_secret("GEMINI_MODEL") or "gemini-2.5-flash"
     col1, col2 = st.columns([1, 2])
     generate = col1.button("Generate AI Brief", use_container_width=True, disabled=not bool(key.strip()))
     col2.caption(f"Model: {model}. The brief is educational only and should be verified against live market data.")

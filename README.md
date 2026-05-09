@@ -61,7 +61,7 @@ Optional Gemini variables:
 
 ```powershell
 $env:GEMINI_API_KEY="your_gemini_api_key"
-$env:GEMINI_MODEL="gemini-2.0-flash"
+$env:GEMINI_MODEL="gemini-2.5-flash"
 streamlit run app.py
 ```
 
@@ -73,7 +73,7 @@ ANGEL_CLIENT_CODE = "your_client_code"
 ANGEL_PIN = "your_pin"
 ANGEL_TOTP_SECRET = "your_totp_secret"
 GEMINI_API_KEY = "your_gemini_api_key"
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 ```
 
 ## Files

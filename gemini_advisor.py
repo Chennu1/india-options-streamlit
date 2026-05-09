@@ -57,7 +57,7 @@ def generate_gemini_brief(
     if not clean_key:
         raise GeminiAdvisorError("Add GEMINI_API_KEY in the app, environment, or Streamlit secrets.")
 
-    selected_model = (model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")).strip() or "gemini-2.0-flash"
+    selected_model = (model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")).strip() or "gemini-2.5-flash"
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent"
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
