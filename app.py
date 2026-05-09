@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import textwrap
 
+import pandas as pd
 import streamlit as st
 
 from market_data import (
@@ -13,6 +14,7 @@ from market_data import (
     rows_near_spot,
 )
 from options_suggestion import INDEX_DEFAULTS, MarketView, StrategyIdea, generate_suggestions
+from payoff import PayoffResult, build_payoff
 
 
 st.set_page_config(
@@ -347,11 +349,12 @@ def render_sidebar() -> MarketView:
 def render_dashboard(view: MarketView, suggestions: list[StrategyIdea]) -> None:
     snapshot = st.session_state.get("last_snapshot")
     render_status_strip(view, snapshot)
+    render_best_setup(view, suggestions, snapshot)
     tab_signals, tab_chain, tab_risk, tab_playbook = st.tabs(
         ["Strategy Signals", "Option Chain", "Risk Console", "Playbook"]
     )
     with tab_signals:
-        render_suggestions(suggestions)
+        render_suggestions(view, suggestions, snapshot)
     with tab_chain:
         if snapshot:
             render_option_chain_table(snapshot, expanded=True)
@@ -382,6 +385,35 @@ def render_status_strip(view: MarketView, snapshot) -> None:
     )
 
 
+def render_best_setup(view: MarketView, suggestions: list[StrategyIdea], snapshot) -> None:
+    if not suggestions:
+        return
+    best = suggestions[0]
+    payoff = build_payoff(best.legs, snapshot, view.spot, view.strike_step, view.lot_size)
+    left, right = st.columns([1.3, 1.0])
+    with left:
+        st.markdown("### Best Setup")
+        st.markdown(
+            f"""
+            <div class="signal-card">
+              <div class="signal-title">{best.name}</div>
+              <div class="signal-bias">{best.bias}</div>
+              <span class="score">Fit {best.score}/100</span>
+              <span class="risk-pill">Lots {format_lots(best.affordable_lots)}</span>
+              <ul class="leg-list">{''.join(f'<li>{leg}</li>' for leg in best.legs)}</ul>
+              <div class="small-note">{best.entry_filter[0] if best.entry_filter else ''}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with right:
+        st.markdown("### Live Payoff Snapshot")
+        if payoff:
+            render_payoff_metrics(payoff)
+        else:
+            st.info("Load live option data to calculate premium-based payoff.")
+
+
 def render_market_summary(view: MarketView) -> None:
     risk_budget = view.capital * view.risk_percent / 100
     cols = st.columns(5)
@@ -400,7 +432,7 @@ def render_market_summary(view: MarketView) -> None:
         render_option_chain_table(snapshot)
 
 
-def render_suggestions(suggestions: list[StrategyIdea]) -> None:
+def render_suggestions(view: MarketView, suggestions: list[StrategyIdea], snapshot) -> None:
     st.subheader("Strategy Signals")
     for index, idea in enumerate(suggestions, start=1):
         st.markdown(
@@ -429,10 +461,13 @@ def render_suggestions(suggestions: list[StrategyIdea]) -> None:
                 risk_col.write(f"- {item}")
             if idea.max_risk_per_lot is not None:
                 st.caption(f"Approximate modelled risk per lot: INR {idea.max_risk_per_lot:,.0f}. Replace this with broker-calculated margin and live premiums before trading.")
+            payoff = build_payoff(idea.legs, snapshot, view.spot, view.strike_step, view.lot_size)
+            render_payoff_chart(payoff)
 
 
 def render_risk_console(view: MarketView, suggestions: list[StrategyIdea]) -> None:
     st.subheader("Risk Console")
+    snapshot = st.session_state.get("last_snapshot")
     risk_budget = view.capital * view.risk_percent / 100
     best = suggestions[0] if suggestions else None
     col1, col2, col3, col4 = st.columns(4)
@@ -444,17 +479,20 @@ def render_risk_console(view: MarketView, suggestions: list[StrategyIdea]) -> No
     st.progress(min(1.0, view.risk_percent / 5.0), text="Risk intensity")
     st.write("Use the modelled lot count as a planning cap. Broker margin and live premiums are the final source of truth.")
 
-    table = [
-        {
+    table = []
+    for idea in suggestions:
+        payoff = build_payoff(idea.legs, snapshot, view.spot, view.strike_step, view.lot_size)
+        table.append({
             "Strategy": idea.name,
             "Score": idea.score,
             "Lots by risk": format_lots(idea.affordable_lots),
             "Modelled risk/lot": "Check margin"
             if idea.max_risk_per_lot is None
             else f"INR {idea.max_risk_per_lot:,.0f}",
-        }
-        for idea in suggestions
-    ]
+            "Live max profit": "Load quotes" if not payoff else f"INR {payoff.max_profit:,.0f}",
+            "Live max loss": "Load quotes" if not payoff else f"INR {payoff.max_loss:,.0f}",
+            "Breakevens": "Load quotes" if not payoff else format_breakevens(payoff.breakevens),
+        })
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 
@@ -495,9 +533,59 @@ def render_option_chain_table(snapshot, expanded: bool = False) -> None:
                     "PE LTP": pe.get("lastPrice"),
                     "PE OI": pe.get("openInterest"),
                     "PE IV": pe.get("impliedVolatility"),
+                    "Zone": strike_zone(row.get("strikePrice"), snapshot),
                 }
             )
-        st.dataframe(table_rows, use_container_width=True, hide_index=True)
+        frame = pd.DataFrame(table_rows)
+        if not frame.empty:
+            styled = frame.style.apply(highlight_chain_rows, axis=1)
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+        else:
+            st.info("No option-chain rows available near spot.")
+
+
+def render_payoff_chart(payoff: PayoffResult | None) -> None:
+    st.markdown("**Payoff Chart**")
+    if not payoff:
+        st.info("Load live option data to draw a payoff chart with option LTP.")
+        return
+    render_payoff_metrics(payoff)
+    frame = pd.DataFrame(payoff.rows).set_index("Underlying")
+    st.line_chart(frame, height=260)
+    st.caption(f"Premium source: {payoff.premium_source}. Payoff is estimated at expiry and excludes charges/slippage.")
+
+
+def render_payoff_metrics(payoff: PayoffResult) -> None:
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Net Premium", f"INR {payoff.net_premium:,.0f}")
+    col2.metric("Max Profit", f"INR {payoff.max_profit:,.0f}")
+    col3.metric("Max Loss", f"INR {payoff.max_loss:,.0f}")
+    st.caption(f"Breakeven: {format_breakevens(payoff.breakevens)}")
+
+
+def strike_zone(strike, snapshot) -> str:
+    try:
+        value = float(strike)
+    except (TypeError, ValueError):
+        return ""
+    if abs(value - snapshot.spot) <= 0.01:
+        return "ATM"
+    if abs(value - snapshot.support) <= 0.01:
+        return "Support"
+    if abs(value - snapshot.resistance) <= 0.01:
+        return "Resistance"
+    return ""
+
+
+def highlight_chain_rows(row) -> list[str]:
+    zone = row.get("Zone", "")
+    if zone == "ATM":
+        return ["background-color: rgba(0, 184, 148, 0.18)"] * len(row)
+    if zone == "Support":
+        return ["background-color: rgba(46, 204, 113, 0.14)"] * len(row)
+    if zone == "Resistance":
+        return ["background-color: rgba(255, 92, 92, 0.14)"] * len(row)
+    return [""] * len(row)
 
 
 def fetch_live_snapshot(
@@ -537,6 +625,12 @@ def format_lots(value: int | None) -> str:
     if value <= 0:
         return "0"
     return str(value)
+
+
+def format_breakevens(values: list[float]) -> str:
+    if not values:
+        return "Not found in chart range"
+    return ", ".join(f"{value:,.2f}" for value in values)
 
 
 if __name__ == "__main__":

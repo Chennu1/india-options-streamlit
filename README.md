@@ -9,8 +9,11 @@ A Streamlit app that generates rule-based options strategy ideas for Indian mark
 - Can consume a custom broker/vendor JSON endpoint for more reliable live data
 - Auto-fills spot, PCR, support from highest PE OI, and resistance from highest CE OI
 - Shows option-chain rows near spot for the selected expiry
+- Highlights ATM, support, and resistance zones in the option-chain table
 - Suggests defined-risk options ideas such as bull call spreads, bear put spreads, bull put spreads, bear call spreads, iron condors, and hedged short strangles
 - Estimates a modelled risk per lot and lot count based on the user's risk budget
+- Builds live premium-based payoff charts when matching option quotes are available
+- Shows breakeven, net premium, max profit, and max loss estimates from live option LTP
 - Shows entry filters, exit rules, and risk notes for each setup
 - Adds beginner guardrails and avoids naked short option suggestions
 
@@ -58,6 +61,7 @@ Do not commit real broker credentials to project files.
 - `app.py`: Streamlit user interface
 - `market_data.py`: NSE option-chain fetch and parsing helpers
 - `options_suggestion.py`: strategy and risk engine
+- `payoff.py`: option-leg parsing and expiry payoff calculations
 - `requirements.txt`: Python dependencies
 
 ## Notes
