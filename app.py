@@ -7,7 +7,12 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from auto_analysis import AutoAnalysis, append_snapshot_history, build_auto_analysis
+try:
+    from streamlit_autorefresh import st_autorefresh
+except ImportError:
+    st_autorefresh = None
+
+from auto_analysis import AutoAnalysis, ScannedContract, append_snapshot_history, build_auto_analysis
 from gemini_advisor import GeminiAdvisorError, GeminiBrief, generate_gemini_brief
 from market_data import (
     MarketDataError,
@@ -431,8 +436,18 @@ def render_sidebar() -> AutoAnalysis:
         expiry_choice = None
         snapshot = st.session_state.get("snapshot")
         reference_spot = float(snapshot.spot) if snapshot else 24176.15
+        auto_refresh_count = None
 
         if use_live_data:
+            auto_refresh = st.checkbox("Auto refresh", value=False)
+            refresh_seconds = st.select_slider("Refresh interval", options=[5, 10, 15, 30, 60], value=15)
+            if auto_refresh and st_autorefresh:
+                auto_refresh_count = st_autorefresh(
+                    interval=refresh_seconds * 1000,
+                    key="live_data_autorefresh",
+                )
+            elif auto_refresh and not st_autorefresh:
+                st.caption("Install streamlit-autorefresh to enable timed refresh on Streamlit Cloud.")
             col_a, col_b = st.columns(2)
             credentials_ready = (
                 data_provider != "Angel One SmartAPI"
@@ -449,7 +464,9 @@ def render_sidebar() -> AutoAnalysis:
             if clear_clicked:
                 st.session_state.pop("snapshot", None)
                 st.session_state.pop("snapshot_symbol", None)
-            if fetch_clicked:
+            auto_tick = auto_refresh_count is not None and auto_refresh_count != st.session_state.get("last_refresh_count")
+            if fetch_clicked or auto_tick:
+                st.session_state["last_refresh_count"] = auto_refresh_count
                 with st.spinner(f"Fetching {data_provider} data..."):
                     try:
                         snapshot = fetch_live_snapshot(
@@ -657,12 +674,39 @@ def render_contract_recommendation(analysis: AutoAnalysis) -> None:
           <div class="signal-title">Suggested Option Contract</div>
           <div class="signal-bias">{contract.action} {contract.strike:g} {contract.option_type}</div>
           <span class="score">{premium}</span>
+          <span class="risk-pill">Scanner {contract.score}/100</span>
           <span class="risk-pill">OI {contract.open_interest:,.0f}</span>
+          <ul class="leg-list">
+            <li>Stop reference: {contract.stop_loss:,.2f}</li>
+            <li>Target reference: {contract.target:,.2f}</li>
+            <li>IV: {contract.iv:,.2f}</li>
+          </ul>
           <div class="small-note">{contract.reason}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    render_contract_scanner(analysis.scanner)
+
+
+def render_contract_scanner(scanner: list[ScannedContract]) -> None:
+    if not scanner:
+        return
+    rows = [
+        {
+            "Rank": index,
+            "Contract": f"{item.strike:g} {item.option_type}",
+            "LTP": item.ltp,
+            "OI": item.open_interest,
+            "IV": item.iv,
+            "Distance": item.distance_points,
+            "Score": item.score,
+            "Verdict": item.verdict,
+        }
+        for index, item in enumerate(scanner[:10], start=1)
+    ]
+    st.markdown('<div class="section-title"><h3>Contract Scanner</h3><span>top nearby CE/PE contracts ranked live</span></div>', unsafe_allow_html=True)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def signal_color(signal: str) -> str:

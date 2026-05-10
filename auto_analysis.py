@@ -16,7 +16,23 @@ class AutoContract:
     option_type: str
     ltp: float
     open_interest: float
+    iv: float
+    score: int
+    stop_loss: float
+    target: float
     reason: str
+
+
+@dataclass
+class ScannedContract:
+    strike: float
+    option_type: str
+    ltp: float
+    open_interest: float
+    iv: float
+    distance_points: float
+    score: int
+    verdict: str
 
 
 @dataclass
@@ -31,6 +47,7 @@ class AutoAnalysis:
     range_position: float
     indicators: list[dict[str, str]]
     contract: AutoContract | None
+    scanner: list[ScannedContract]
     summary: str
 
 
@@ -92,7 +109,8 @@ def build_auto_analysis(
     risk_level, risk_percent = dynamic_risk(signal_strength, avg_iv, days_to_expiry, experience)
     trend_strength = min(10, max(1, round(signal_strength / 10)))
     iv_percentile = implied_iv_regime(avg_iv)
-    contract = choose_contract(snapshot, signal, spot, strike_step)
+    scanner = scan_contracts(snapshot, spot, strike_step)
+    contract = choose_contract(scanner, signal)
 
     view = MarketView(
         symbol=symbol,
@@ -136,37 +154,80 @@ def build_auto_analysis(
         range_position=range_position,
         indicators=indicators,
         contract=contract,
+        scanner=scanner,
         summary=summary,
     )
 
 
-def choose_contract(
+def scan_contracts(
     snapshot: OptionChainSnapshot | None,
-    signal: str,
     spot: float,
     strike_step: int,
-) -> AutoContract | None:
-    if not snapshot or signal == "WAIT":
+) -> list[ScannedContract]:
+    if not snapshot:
+        return []
+
+    contracts: list[ScannedContract] = []
+    max_oi = max(
+        [
+            option_value(row.get(side), "openInterest")
+            for row in rows_near_spot(snapshot, width=14)
+            for side in ("CE", "PE")
+        ]
+        or [1]
+    )
+    atm = round_to_step(spot, strike_step)
+    for row in rows_near_spot(snapshot, width=14):
+        strike = float(row.get("strikePrice") or atm)
+        for option_type in ("CE", "PE"):
+            side = row.get(option_type) or {}
+            ltp = option_value(side, "lastPrice")
+            oi = option_value(side, "openInterest")
+            iv = option_value(side, "impliedVolatility")
+            distance = abs(strike - atm)
+            liquidity_score = min(35, int((oi / max(max_oi, 1)) * 35))
+            distance_score = max(0, 30 - int(distance / max(strike_step, 1) * 8))
+            premium_score = 20 if ltp > 0 else 0
+            iv_score = 15 if 8 <= iv <= 28 else 8 if iv > 0 else 0
+            score = liquidity_score + distance_score + premium_score + iv_score
+            verdict = "Best" if score >= 78 else "Good" if score >= 62 else "Watch"
+            contracts.append(
+                ScannedContract(
+                    strike=strike,
+                    option_type=option_type,
+                    ltp=ltp,
+                    open_interest=oi,
+                    iv=iv,
+                    distance_points=distance,
+                    score=score,
+                    verdict=verdict,
+                )
+            )
+    return sorted(contracts, key=lambda item: item.score, reverse=True)
+
+
+def choose_contract(scanner: list[ScannedContract], signal: str) -> AutoContract | None:
+    if signal == "WAIT" or not scanner:
         return None
 
     option_type = "CE" if signal == "BUY CALL" else "PE"
-    candidates = rows_near_spot(snapshot, width=12)
-    if not candidates:
+    matching = [item for item in scanner if item.option_type == option_type and item.ltp > 0]
+    if not matching:
         return None
-
-    atm = round_to_step(spot, strike_step)
-    best_row = min(candidates, key=lambda row: abs(float(row.get("strikePrice") or 0) - atm))
-    strike = float(best_row.get("strikePrice") or atm)
-    side = best_row.get(option_type) or {}
-    ltp = option_value(side, "lastPrice")
-    oi = option_value(side, "openInterest")
+    best = matching[0]
+    stop_loss = round(best.ltp * 0.7, 2)
+    target = round(best.ltp * 1.45, 2)
     return AutoContract(
         action="Buy",
-        strike=strike,
-        option_type=option_type,
-        ltp=ltp,
-        open_interest=oi,
-        reason="Selected nearest liquid ATM contract from the live option-chain snapshot.",
+        strike=best.strike,
+        option_type=best.option_type,
+        ltp=best.ltp,
+        open_interest=best.open_interest,
+        iv=best.iv,
+        score=best.score,
+        stop_loss=stop_loss,
+        target=target,
+        reason="Selected from the ranked live option scanner using liquidity, strike distance, premium availability, and IV quality.",
     )
 
 

@@ -17,6 +17,8 @@ A Streamlit app that generates rule-based options strategy ideas for Indian mark
 - Adds an optional Gemini AI brief for cautious market commentary and risk review
 - Auto-derives market view, trend strength, risk percentage, support, resistance, and option contract selection from live data
 - Shows a realtime refresh-history graph with signal markers for buy-call, buy-put, or wait conditions
+- Adds timed auto-refresh for live polling when enabled in the sidebar
+- Ranks nearby CE/PE contracts by liquidity, strike distance, IV quality, and available premium
 - Shows entry filters, exit rules, and risk notes for each setup
 - Adds beginner guardrails and avoids naked short option suggestions
 
