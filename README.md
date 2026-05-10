@@ -22,6 +22,7 @@ A Streamlit app that generates rule-based options strategy ideas for Indian mark
 - Shows recent Angel historical candles with the latest buy-call, buy-put, or wait marker
 - Uses manual live refresh to avoid Streamlit's full-page auto-refresh grey overlay
 - Ranks nearby CE/PE contracts by liquidity, strike distance, IV quality, and available premium
+- Tracks suggested contracts in a session-only paper trading journal with live P&L, stop, target, and status
 - Shows entry filters, exit rules, and risk notes for each setup
 - Adds beginner guardrails and avoids naked short option suggestions
 
@@ -104,6 +105,7 @@ SENSEX_STRIKE_STEP = "100"
 - `market_data.py`: NSE option-chain fetch and parsing helpers
 - `options_suggestion.py`: strategy and risk engine
 - `auto_analysis.py`: automatic indicator, risk, signal, and contract-selection engine
+- `paper_trading.py`: session-only paper trade tracking and P&L calculations
 - `payoff.py`: option-leg parsing and expiry payoff calculations
 - `gemini_advisor.py`: Gemini market brief integration
 - `requirements.txt`: Python dependencies
@@ -112,6 +114,7 @@ SENSEX_STRIKE_STEP = "100"
 
 - The app auto-connects to Angel One when secrets are configured.
 - The app does not place orders.
+- Paper trades are simulated in the Streamlit session and are not persisted after the session resets.
 - Default lot sizes and strike intervals can be overridden with Streamlit secrets because exchange rules and contract specifications can change.
 - Streamlit full-page auto-refresh was removed because it greys out the UI during reruns. True tick streaming should be implemented as a separate Angel WebSocket service.
 - The older static Snake prototype files are still present in the repo and were left untouched.

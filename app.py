@@ -18,6 +18,7 @@ from market_data import (
     rows_near_spot,
 )
 from options_suggestion import INDEX_DEFAULTS, MarketView, StrategyIdea, generate_suggestions
+from paper_trading import close_trade, create_trade, update_trades
 from payoff import PayoffResult, build_payoff
 
 
@@ -480,14 +481,17 @@ def render_dashboard(analysis: AutoAnalysis, suggestions: list[StrategyIdea]) ->
     view = analysis.view
     snapshot = st.session_state.get("last_snapshot")
     append_snapshot_history(snapshot, analysis.signal)
+    st.session_state["paper_trades"] = update_trades(st.session_state.get("paper_trades", []), analysis)
     render_status_strip(view, snapshot)
     render_auto_trade_console(analysis, snapshot)
-    tab_signals, tab_ai, tab_chain, tab_risk, tab_playbook = st.tabs(
-        ["Auto Contracts", "AI Brief", "Option Chain", "Risk Console", "Playbook"]
+    tab_signals, tab_paper, tab_ai, tab_chain, tab_risk, tab_playbook = st.tabs(
+        ["Auto Contracts", "Paper Trades", "AI Brief", "Option Chain", "Risk Console", "Playbook"]
     )
     with tab_signals:
         render_best_setup(view, suggestions, snapshot)
         render_suggestions(view, suggestions, snapshot)
+    with tab_paper:
+        render_paper_trading(analysis)
     with tab_ai:
         render_ai_brief(view, suggestions, snapshot)
     with tab_chain:
@@ -654,7 +658,65 @@ def render_contract_recommendation(analysis: AutoAnalysis) -> None:
         """,
         unsafe_allow_html=True,
     )
+    if st.button("Track Paper Trade", use_container_width=True):
+        trade = create_trade(analysis)
+        if trade:
+            trades = st.session_state.get("paper_trades", [])
+            trades.append(trade)
+            st.session_state["paper_trades"] = trades
+            st.success(f"Tracking paper trade: {trade['contract']}")
+        else:
+            st.warning("No valid live contract price is available to track.")
     render_contract_scanner(analysis.scanner)
+
+
+def render_paper_trading(analysis: AutoAnalysis) -> None:
+    st.markdown(
+        '<div class="section-title"><h3>Paper Trades</h3><span>simulated tracking only, no broker orders are placed</span></div>',
+        unsafe_allow_html=True,
+    )
+    trades = update_trades(st.session_state.get("paper_trades", []), analysis)
+    st.session_state["paper_trades"] = trades
+    if not trades:
+        st.info("No paper trades yet. Use Track Paper Trade under the suggested contract.")
+        return
+
+    open_count = sum(1 for trade in trades if trade.get("status") == "Open")
+    total_pnl = sum(float(trade.get("pnl") or 0) for trade in trades)
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Tracked Trades", len(trades))
+    col2.metric("Open Trades", open_count)
+    col3.metric("Session P&L", f"INR {total_pnl:,.0f}")
+
+    rows = [
+        {
+            "ID": trade.get("id"),
+            "Symbol": trade.get("symbol"),
+            "Contract": trade.get("contract"),
+            "Entry": trade.get("entry_price"),
+            "Current": trade.get("current_price"),
+            "Qty": trade.get("quantity"),
+            "SL": trade.get("stop_loss"),
+            "Target": trade.get("target"),
+            "Status": trade.get("status"),
+            "P&L": trade.get("pnl"),
+        }
+        for trade in trades
+    ]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    open_ids = [str(trade.get("id")) for trade in trades if trade.get("status") == "Open"]
+    if open_ids:
+        selected = st.selectbox("Exit paper trade", open_ids)
+        if st.button("Mark Selected Trade Exited"):
+            st.session_state["paper_trades"] = [
+                close_trade(trade) if str(trade.get("id")) == selected else trade
+                for trade in trades
+            ]
+            st.rerun()
+    if st.button("Clear Paper Journal"):
+        st.session_state["paper_trades"] = []
+        st.rerun()
 
 
 def render_contract_scanner(scanner: list[ScannedContract]) -> None:
