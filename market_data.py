@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from statistics import mean
 from typing import Any
 
@@ -31,6 +31,16 @@ class OptionChainSnapshot:
 
 class MarketDataError(RuntimeError):
     pass
+
+
+@dataclass
+class Candle:
+    timestamp: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
 
 
 def fetch_option_chain(symbol: str, expiry: str | None = None) -> OptionChainSnapshot:
@@ -238,6 +248,71 @@ def fetch_angel_snapshot(
         rows=normalized_rows,
         source="Angel One SmartAPI quotes",
     )
+
+
+def fetch_angel_historical_candles(
+    api_key: str,
+    client_code: str,
+    password: str,
+    totp_or_secret: str,
+    symbol: str,
+    interval: str = "FIFTEEN_MINUTE",
+    days: int = 5,
+) -> list[Candle]:
+    try:
+        import pyotp
+        from SmartApi import SmartConnect
+    except ImportError as exc:
+        raise MarketDataError(
+            "Angel historical candles need smartapi-python and pyotp."
+        ) from exc
+
+    clean_symbol = symbol.strip().upper()
+    totp_value = totp_or_secret.strip()
+    if not totp_value.isdigit() or len(totp_value) != 6:
+        try:
+            totp_value = pyotp.TOTP(totp_value).now()
+        except Exception as exc:
+            raise MarketDataError("Angel TOTP value/secret is invalid.") from exc
+
+    smart_api = SmartConnect(api_key=api_key.strip())
+    session = smart_api.generateSession(client_code.strip(), password.strip(), totp_value)
+    if not session or session.get("status") is False:
+        raise MarketDataError(f"Angel login failed: {session}")
+
+    instruments = fetch_angel_instruments()
+    index_row = find_angel_index_row(instruments, clean_symbol)
+    if not index_row:
+        raise MarketDataError(f"No Angel index token found for {clean_symbol}.")
+
+    to_time = datetime.now()
+    from_time = to_time - timedelta(days=days)
+    params = {
+        "exchange": str(index_row.get("exch_seg", "NSE")),
+        "symboltoken": str(index_row.get("token", "")),
+        "interval": interval,
+        "fromdate": from_time.strftime("%Y-%m-%d %H:%M"),
+        "todate": to_time.strftime("%Y-%m-%d %H:%M"),
+    }
+    response = smart_api.getCandleData(params)
+    if not response or response.get("status") is False:
+        raise MarketDataError(f"Angel candle data failed: {response}")
+    rows = response.get("data") or []
+    candles: list[Candle] = []
+    for row in rows:
+        if not isinstance(row, list) or len(row) < 6:
+            continue
+        candles.append(
+            Candle(
+                timestamp=str(row[0]),
+                open=float(row[1]),
+                high=float(row[2]),
+                low=float(row[3]),
+                close=float(row[4]),
+                volume=float(row[5] or 0),
+            )
+        )
+    return candles
 
 
 def snapshot_from_custom_payload(payload: dict[str, Any]) -> OptionChainSnapshot:

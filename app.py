@@ -7,15 +7,11 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-try:
-    from streamlit_autorefresh import st_autorefresh
-except ImportError:
-    st_autorefresh = None
-
 from auto_analysis import AutoAnalysis, ScannedContract, append_snapshot_history, build_auto_analysis
 from gemini_advisor import GeminiAdvisorError, GeminiBrief, generate_gemini_brief
 from market_data import (
     MarketDataError,
+    fetch_angel_historical_candles,
     fetch_angel_snapshot,
     fetch_custom_snapshot,
     fetch_option_chain,
@@ -413,40 +409,51 @@ def render_live_index_panel() -> AutoAnalysis:
     strike_step = int(get_secret(f"{selected_symbol}_STRIKE_STEP") or defaults["strike_step"])
     lot_size = int(get_secret(f"{selected_symbol}_LOT_SIZE") or defaults["lot_size"])
 
-    auto_refresh_count = None
-    if st_autorefresh:
-        auto_refresh_count = st_autorefresh(interval=int(get_secret("APP_REFRESH_SECONDS") or 15) * 1000, key="live_data_autorefresh")
-
     if st.session_state.get("selected_symbol") != selected_symbol:
         st.session_state["selected_symbol"] = selected_symbol
         st.session_state.pop("snapshot", None)
         st.session_state.pop("price_history", None)
+        st.session_state.pop("historical_candles", None)
 
     snapshot = st.session_state.get("snapshot")
     reference_spot = float(snapshot.spot) if snapshot else SPOT_HINTS.get(selected_symbol, 1000.0)
     should_fetch = (
         snapshot is None
         or st.button("Refresh live data", use_container_width=False)
-        or (auto_refresh_count is not None and auto_refresh_count != st.session_state.get("last_refresh_count"))
     )
 
     if should_fetch:
-        st.session_state["last_refresh_count"] = auto_refresh_count
         try:
+            api_key = get_secret("ANGEL_API_KEY")
+            client_code = get_secret("ANGEL_CLIENT_CODE")
+            password = get_secret("ANGEL_PIN") or get_secret("ANGEL_PASSWORD")
+            totp = get_secret("ANGEL_TOTP_SECRET") or get_secret("ANGEL_TOTP")
             snapshot = fetch_live_snapshot(
                 provider="Angel One SmartAPI",
                 symbol=selected_symbol,
                 custom_url="",
                 custom_token="",
-                angel_api_key=get_secret("ANGEL_API_KEY"),
-                angel_client_code=get_secret("ANGEL_CLIENT_CODE"),
-                angel_password=get_secret("ANGEL_PIN") or get_secret("ANGEL_PASSWORD"),
-                angel_totp=get_secret("ANGEL_TOTP_SECRET") or get_secret("ANGEL_TOTP"),
+                angel_api_key=api_key,
+                angel_client_code=client_code,
+                angel_password=password,
+                angel_totp=totp,
                 spot_hint=reference_spot,
                 strike_step=strike_step,
             )
             st.session_state["snapshot"] = snapshot
             st.session_state["last_snapshot"] = snapshot
+            try:
+                st.session_state["historical_candles"] = fetch_angel_historical_candles(
+                    api_key=api_key,
+                    client_code=client_code,
+                    password=password,
+                    totp_or_secret=totp,
+                    symbol=selected_symbol,
+                    interval=get_secret("APP_CANDLE_INTERVAL") or "FIFTEEN_MINUTE",
+                    days=int(get_secret("APP_HISTORY_DAYS") or 5),
+                )
+            except MarketDataError as exc:
+                st.session_state["historical_candle_error"] = str(exc)
         except MarketDataError as exc:
             st.error(str(exc))
         except Exception as exc:
@@ -543,6 +550,11 @@ def render_auto_trade_console(analysis: AutoAnalysis, snapshot) -> None:
 
 
 def render_realtime_signal_chart(analysis: AutoAnalysis, snapshot) -> None:
+    candles = st.session_state.get("historical_candles", [])
+    if candles:
+        render_historical_candle_chart(analysis, candles)
+        return
+
     history = st.session_state.get("price_history", [])
     if not history:
         current = {
@@ -575,7 +587,47 @@ def render_realtime_signal_chart(analysis: AutoAnalysis, snapshot) -> None:
         color=signal_color(analysis.signal),
     ).encode(x="time:N", y="spot:Q", text="signal:N")
     st.altair_chart((spot_line + support_line + resistance_line + marker + label).properties(height=330), use_container_width=True)
-    st.caption("The chart updates as each live refresh adds a new spot snapshot. Lines show spot, support, and resistance.")
+    error = st.session_state.get("historical_candle_error")
+    if error:
+        st.caption(f"Historical candles unavailable: {error}. Showing current-session refresh history.")
+    else:
+        st.caption("Showing current-session refresh history. Historical candles appear after Angel candle data loads.")
+
+
+def render_historical_candle_chart(analysis: AutoAnalysis, candles) -> None:
+    frame = pd.DataFrame([candle.__dict__ for candle in candles])
+    frame["timestamp"] = pd.to_datetime(frame["timestamp"])
+    frame = frame.tail(160)
+
+    base = alt.Chart(frame).encode(x=alt.X("timestamp:T", title="Time"))
+    close_line = base.mark_line(color="#008f7a", strokeWidth=2.5).encode(
+        y=alt.Y("close:Q", title="Index"),
+        tooltip=["timestamp:T", "open:Q", "high:Q", "low:Q", "close:Q"],
+    )
+    high_low = base.mark_rule(color="#9aa8a3").encode(y="low:Q", y2="high:Q")
+    current = pd.DataFrame(
+        [
+            {
+                "timestamp": frame["timestamp"].iloc[-1],
+                "close": analysis.view.spot,
+                "signal": analysis.signal,
+            }
+        ]
+    )
+    marker = alt.Chart(current).mark_point(size=180, filled=True, color=signal_color(analysis.signal)).encode(
+        x="timestamp:T",
+        y="close:Q",
+        tooltip=["timestamp:T", "close:Q", "signal:N"],
+    )
+    label = alt.Chart(current).mark_text(
+        align="left",
+        dx=10,
+        dy=-12,
+        fontWeight="bold",
+        color=signal_color(analysis.signal),
+    ).encode(x="timestamp:T", y="close:Q", text="signal:N")
+    st.altair_chart((high_low + close_line + marker + label).properties(height=330), use_container_width=True)
+    st.caption("Showing recent Angel historical candles with the latest live auto-signal marker.")
 
 
 def render_contract_recommendation(analysis: AutoAnalysis) -> None:

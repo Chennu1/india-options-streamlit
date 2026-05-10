@@ -19,8 +19,8 @@ A Streamlit app that generates rule-based options strategy ideas for Indian mark
 - Shows breakeven, net premium, max profit, and max loss estimates from live option LTP
 - Adds an optional Gemini AI brief for cautious market commentary and risk review
 - Auto-derives market view, trend strength, risk percentage, support, resistance, and option contract selection from live data
-- Shows a realtime refresh-history graph with signal markers for buy-call, buy-put, or wait conditions
-- Adds timed auto-refresh for live polling when enabled in the sidebar
+- Shows recent Angel historical candles with the latest buy-call, buy-put, or wait marker
+- Uses manual live refresh to avoid Streamlit's full-page auto-refresh grey overlay
 - Ranks nearby CE/PE contracts by liquidity, strike distance, IV quality, and available premium
 - Shows entry filters, exit rules, and risk notes for each setup
 - Adds beginner guardrails and avoids naked short option suggestions
@@ -83,7 +83,8 @@ GEMINI_API_KEY = "your_gemini_api_key"
 GEMINI_MODEL = "gemini-2.5-flash"
 APP_CAPITAL = "100000"
 APP_EXPERIENCE = "Intermediate"
-APP_REFRESH_SECONDS = "15"
+APP_CANDLE_INTERVAL = "FIFTEEN_MINUTE"
+APP_HISTORY_DAYS = "5"
 ```
 
 Optional per-index overrides:
@@ -112,6 +113,7 @@ SENSEX_STRIKE_STEP = "100"
 - The app auto-connects to Angel One when secrets are configured.
 - The app does not place orders.
 - Default lot sizes and strike intervals can be overridden with Streamlit secrets because exchange rules and contract specifications can change.
+- Streamlit full-page auto-refresh was removed because it greys out the UI during reruns. True tick streaming should be implemented as a separate Angel WebSocket service.
 - The older static Snake prototype files are still present in the repo and were left untouched.
 
 ## Custom live-data JSON shape
