@@ -15,6 +15,8 @@ A Streamlit app that generates rule-based options strategy ideas for Indian mark
 - Builds live premium-based payoff charts when matching option quotes are available
 - Shows breakeven, net premium, max profit, and max loss estimates from live option LTP
 - Adds an optional Gemini AI brief for cautious market commentary and risk review
+- Auto-derives market view, trend strength, risk percentage, support, resistance, and option contract selection from live data
+- Shows a realtime refresh-history graph with signal markers for buy-call, buy-put, or wait conditions
 - Shows entry filters, exit rules, and risk notes for each setup
 - Adds beginner guardrails and avoids naked short option suggestions
 
@@ -81,6 +83,7 @@ GEMINI_MODEL = "gemini-2.5-flash"
 - `app.py`: Streamlit user interface
 - `market_data.py`: NSE option-chain fetch and parsing helpers
 - `options_suggestion.py`: strategy and risk engine
+- `auto_analysis.py`: automatic indicator, risk, signal, and contract-selection engine
 - `payoff.py`: option-leg parsing and expiry payoff calculations
 - `gemini_advisor.py`: Gemini market brief integration
 - `requirements.txt`: Python dependencies

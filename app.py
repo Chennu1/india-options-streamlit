@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 import textwrap
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
+from auto_analysis import AutoAnalysis, append_snapshot_history, build_auto_analysis
 from gemini_advisor import GeminiAdvisorError, GeminiBrief, generate_gemini_brief
 from market_data import (
     MarketDataError,
@@ -28,10 +30,10 @@ st.set_page_config(
 def main() -> None:
     inject_css()
     render_header()
-    view = render_sidebar()
+    analysis = render_sidebar()
 
-    suggestions = generate_suggestions(view)
-    render_dashboard(view, suggestions)
+    suggestions = generate_suggestions(analysis.view)
+    render_dashboard(analysis, suggestions)
 
 
 def inject_css() -> None:
@@ -381,7 +383,7 @@ def render_header() -> None:
     )
 
 
-def render_sidebar() -> MarketView:
+def render_sidebar() -> AutoAnalysis:
     with st.sidebar:
         st.header("Control Panel")
         symbol = st.selectbox("Underlying", list(INDEX_DEFAULTS.keys()))
@@ -498,34 +500,13 @@ def render_sidebar() -> MarketView:
                 st.success(f"{snapshot.source}: {snapshot.timestamp}")
 
         live_spot = float(snapshot.spot) if snapshot else 24176.15
-        live_support = float(snapshot.support) if snapshot else max(1.0, live_spot - 250)
-        live_resistance = float(snapshot.resistance) if snapshot else live_spot + 250
-        live_pcr = float(snapshot.pcr) if snapshot else 1.0
 
-        with st.expander("Market View", expanded=True):
-            spot = st.number_input("Spot / last close", min_value=1.0, value=live_spot, step=25.0)
-            direction = st.radio(
-                "Market view",
-                ["Bullish", "Bearish", "Range-bound"],
-                index=0,
-                horizontal=True,
-            )
-            trend_strength = st.slider("Trend strength", min_value=0, max_value=10, value=6)
-            iv_help = "Use actual IV percentile if you have it. In live mode, NSE average IV is shown below as a proxy, not a percentile."
-            iv_percentile = st.slider("IV percentile / IV regime", min_value=0, max_value=100, value=45, help=iv_help)
-            days_to_expiry = st.slider("Days to expiry", min_value=0, max_value=45, value=7)
-
-        with st.expander("Levels and Risk", expanded=True):
-            support = st.number_input("Support", min_value=1.0, value=live_support, step=25.0)
-            resistance = st.number_input("Resistance", min_value=1.0, value=live_resistance, step=25.0)
-            pcr = st.number_input("Option chain PCR", min_value=0.1, max_value=3.0, value=live_pcr, step=0.05)
-            if snapshot:
-                st.caption(f"Average option IV from selected chain: {snapshot.avg_iv:.2f}")
+        with st.expander("Account Settings", expanded=True):
             capital = st.number_input("Trading capital (INR)", min_value=1000.0, value=100000.0, step=5000.0)
-            risk_percent = st.slider("Risk per idea (%)", min_value=0.25, max_value=5.0, value=1.0, step=0.25)
+            experience = st.selectbox("Experience", ["Beginner", "Intermediate", "Advanced"])
             strike_step = st.number_input("Strike interval", min_value=1, value=int(defaults["strike_step"]), step=1)
             lot_size = st.number_input("Lot size", min_value=1, value=int(defaults["lot_size"]), step=1)
-            experience = st.selectbox("Experience", ["Beginner", "Intermediate", "Advanced"])
+            st.caption("Market view, levels, and risk are now calculated automatically from live data.")
 
         with st.expander("Gemini AI Brief", expanded=False):
             st.text_input(
@@ -544,35 +525,28 @@ def render_sidebar() -> MarketView:
     if snapshot:
         st.session_state["last_snapshot"] = snapshot
 
-    if support >= resistance:
-        st.error("Support must be below resistance for useful suggestions.")
-
-    return MarketView(
+    return build_auto_analysis(
         symbol=symbol,
-        spot=spot,
-        direction=direction or "Bullish",
-        trend_strength=trend_strength,
-        iv_percentile=iv_percentile,
-        days_to_expiry=days_to_expiry,
-        support=support,
-        resistance=resistance,
-        pcr=pcr,
-        capital=capital,
-        risk_percent=risk_percent,
+        spot=live_spot,
         strike_step=int(strike_step),
         lot_size=int(lot_size),
+        capital=capital,
         experience=experience,
+        snapshot=snapshot,
     )
 
 
-def render_dashboard(view: MarketView, suggestions: list[StrategyIdea]) -> None:
+def render_dashboard(analysis: AutoAnalysis, suggestions: list[StrategyIdea]) -> None:
+    view = analysis.view
     snapshot = st.session_state.get("last_snapshot")
+    append_snapshot_history(snapshot, analysis.signal)
     render_status_strip(view, snapshot)
-    render_best_setup(view, suggestions, snapshot)
+    render_auto_trade_console(analysis, snapshot)
     tab_signals, tab_ai, tab_chain, tab_risk, tab_playbook = st.tabs(
-        ["Strategy Signals", "AI Brief", "Option Chain", "Risk Console", "Playbook"]
+        ["Auto Contracts", "AI Brief", "Option Chain", "Risk Console", "Playbook"]
     )
     with tab_signals:
+        render_best_setup(view, suggestions, snapshot)
         render_suggestions(view, suggestions, snapshot)
     with tab_ai:
         render_ai_brief(view, suggestions, snapshot)
@@ -606,6 +580,97 @@ def render_status_strip(view: MarketView, snapshot) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_auto_trade_console(analysis: AutoAnalysis, snapshot) -> None:
+    view = analysis.view
+    st.markdown(
+        '<div class="section-title"><h3>Realtime Auto Analysis</h3><span>signal, graph, indicators, and option contract are generated from live data</span></div>',
+        unsafe_allow_html=True,
+    )
+    left, right = st.columns([1.55, 1.0])
+    with left:
+        render_realtime_signal_chart(analysis, snapshot)
+        render_contract_recommendation(analysis)
+    with right:
+        signal_class = "score" if analysis.signal != "WAIT" else "risk-pill"
+        st.markdown(
+            f"""
+            <div class="best-shell">
+              <div class="signal-title">{analysis.signal}</div>
+              <div class="signal-bias">{analysis.summary}</div>
+              <span class="{signal_class}">Strength {analysis.signal_strength}/100</span>
+              <span class="risk-pill">Risk {analysis.risk_level} ({analysis.risk_percent:.2f}%)</span>
+              <div class="small-note">Trend: {analysis.trend_label}. IV: {analysis.iv_label}.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.dataframe(pd.DataFrame(analysis.indicators), use_container_width=True, hide_index=True)
+
+
+def render_realtime_signal_chart(analysis: AutoAnalysis, snapshot) -> None:
+    history = st.session_state.get("price_history", [])
+    if not history:
+        current = {
+            "time": "Current",
+            "spot": analysis.view.spot,
+            "support": analysis.view.support,
+            "resistance": analysis.view.resistance,
+            "signal": analysis.signal,
+        }
+        history = [current]
+
+    frame = pd.DataFrame(history)
+    base = alt.Chart(frame).encode(x=alt.X("time:N", title="Refresh time"))
+    spot_line = base.mark_line(color="#008f7a", strokeWidth=3).encode(
+        y=alt.Y("spot:Q", title="Spot"),
+        tooltip=["time", "spot", "support", "resistance", "signal"],
+    )
+    support_line = base.mark_line(color="#2f855a", strokeDash=[6, 4]).encode(y="support:Q")
+    resistance_line = base.mark_line(color="#c24141", strokeDash=[6, 4]).encode(y="resistance:Q")
+    marker = alt.Chart(frame.tail(1)).mark_point(size=170, filled=True, color=signal_color(analysis.signal)).encode(
+        x="time:N",
+        y="spot:Q",
+        tooltip=["time", "spot", "signal"],
+    )
+    label = alt.Chart(frame.tail(1)).mark_text(
+        align="left",
+        dx=10,
+        dy=-12,
+        fontWeight="bold",
+        color=signal_color(analysis.signal),
+    ).encode(x="time:N", y="spot:Q", text="signal:N")
+    st.altair_chart((spot_line + support_line + resistance_line + marker + label).properties(height=330), use_container_width=True)
+    st.caption("The chart updates as each live refresh adds a new spot snapshot. Lines show spot, support, and resistance.")
+
+
+def render_contract_recommendation(analysis: AutoAnalysis) -> None:
+    contract = analysis.contract
+    if not contract:
+        st.info("No buy contract selected right now. The auto engine is waiting for a cleaner signal or live option quotes.")
+        return
+    premium = f"INR {contract.ltp:,.2f}" if contract.ltp else "LTP unavailable"
+    st.markdown(
+        f"""
+        <div class="signal-card">
+          <div class="signal-title">Suggested Option Contract</div>
+          <div class="signal-bias">{contract.action} {contract.strike:g} {contract.option_type}</div>
+          <span class="score">{premium}</span>
+          <span class="risk-pill">OI {contract.open_interest:,.0f}</span>
+          <div class="small-note">{contract.reason}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def signal_color(signal: str) -> str:
+    if signal == "BUY CALL":
+        return "#008f7a"
+    if signal == "BUY PUT":
+        return "#c24141"
+    return "#b7791f"
 
 
 def render_best_setup(view: MarketView, suggestions: list[StrategyIdea], snapshot) -> None:
