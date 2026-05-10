@@ -4,8 +4,11 @@ A Streamlit app that generates rule-based options strategy ideas for Indian mark
 
 ## What it does
 
-- Takes spot price, support, resistance, PCR, IV percentile, expiry, capital, risk percentage, strike interval, and lot size
-- Can fetch NSE option-chain data on demand for index and stock options
+- Runs from Streamlit secrets without asking for Angel or Gemini keys in the app UI
+- Lets the user select NIFTY, BANKNIFTY, SENSEX, FINNIFTY, or MIDCPNIFTY from the main dashboard
+- Connects to Angel One SmartAPI automatically and requires live data before analysis is shown
+- Fetches live index spot from Angel index tokens before scanning option contracts
+- Can fetch NSE option-chain data on demand for index and stock options in code, but the production UI uses Angel
 - Can consume a custom broker/vendor JSON endpoint for more reliable live data
 - Auto-fills spot, PCR, support from highest PE OI, and resistance from highest CE OI
 - Shows option-chain rows near spot for the selected expiry
@@ -78,6 +81,20 @@ ANGEL_PIN = "your_pin"
 ANGEL_TOTP_SECRET = "your_totp_secret"
 GEMINI_API_KEY = "your_gemini_api_key"
 GEMINI_MODEL = "gemini-2.5-flash"
+APP_CAPITAL = "100000"
+APP_EXPERIENCE = "Intermediate"
+APP_REFRESH_SECONDS = "15"
+```
+
+Optional per-index overrides:
+
+```toml
+NIFTY_LOT_SIZE = "75"
+BANKNIFTY_LOT_SIZE = "30"
+SENSEX_LOT_SIZE = "10"
+NIFTY_STRIKE_STEP = "50"
+BANKNIFTY_STRIKE_STEP = "100"
+SENSEX_STRIKE_STEP = "100"
 ```
 
 ## Files
@@ -92,9 +109,9 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 ## Notes
 
-- The app fetches option-chain data only when you enable live mode and press refresh.
+- The app auto-connects to Angel One when secrets are configured.
 - The app does not place orders.
-- Default lot sizes and strike intervals are editable because exchange rules and contract specifications can change.
+- Default lot sizes and strike intervals can be overridden with Streamlit secrets because exchange rules and contract specifications can change.
 - The older static Snake prototype files are still present in the repo and were left untouched.
 
 ## Custom live-data JSON shape

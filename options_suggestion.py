@@ -9,6 +9,7 @@ INDEX_DEFAULTS = {
     "BANKNIFTY": {"strike_step": 100, "lot_size": 30},
     "FINNIFTY": {"strike_step": 50, "lot_size": 65},
     "MIDCPNIFTY": {"strike_step": 25, "lot_size": 120},
+    "SENSEX": {"strike_step": 100, "lot_size": 10},
     "STOCK OPTION": {"strike_step": 10, "lot_size": 1},
 }
 

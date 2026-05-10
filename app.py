@@ -25,6 +25,16 @@ from options_suggestion import INDEX_DEFAULTS, MarketView, StrategyIdea, generat
 from payoff import PayoffResult, build_payoff
 
 
+TRADEABLE_INDICES = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY"]
+SPOT_HINTS = {
+    "NIFTY": 24176.15,
+    "BANKNIFTY": 54800.0,
+    "SENSEX": 79400.0,
+    "FINNIFTY": 26200.0,
+    "MIDCPNIFTY": 12900.0,
+}
+
+
 st.set_page_config(
     page_title="India Options Strategy Assistant",
     page_icon="O",
@@ -35,7 +45,7 @@ st.set_page_config(
 def main() -> None:
     inject_css()
     render_header()
-    analysis = render_sidebar()
+    analysis = render_live_index_panel()
 
     suggestions = generate_suggestions(analysis.view)
     render_dashboard(analysis, suggestions)
@@ -333,6 +343,13 @@ def inject_css() -> None:
         div[data-testid="stAlert"] {
           border-radius: 8px;
         }
+        section[data-testid="stSidebar"] {
+          display: none;
+        }
+        .main .block-container {
+          padding-left: 1.25rem;
+          padding-right: 1.25rem;
+        }
         @media (max-width: 900px) {
           .hero-topline { display: block; }
           .terminal-badge { margin-top: 12px; }
@@ -363,7 +380,7 @@ def render_header() -> None:
             <div class="terminal-badge">Gemini 2.5 Flash Ready</div>
           </div>
           <div class="hero-grid">
-            <div class="hero-kpi"><span>Data providers</span><strong>Angel, NSE, Custom</strong></div>
+            <div class="hero-kpi"><span>Data provider</span><strong>Angel Secrets</strong></div>
             <div class="hero-kpi"><span>Analytics</span><strong>Payoff + Breakeven</strong></div>
             <div class="hero-kpi"><span>Strategies</span><strong>Defined Risk First</strong></div>
             <div class="hero-kpi"><span>Deployment</span><strong>Streamlit Cloud</strong></div>
@@ -388,165 +405,64 @@ def render_header() -> None:
     )
 
 
-def render_sidebar() -> AutoAnalysis:
-    with st.sidebar:
-        st.header("Control Panel")
-        symbol = st.selectbox("Underlying", list(INDEX_DEFAULTS.keys()))
-        defaults = INDEX_DEFAULTS[symbol]
+def render_live_index_panel() -> AutoAnalysis:
+    selected_symbol = st.radio("Index", TRADEABLE_INDICES, horizontal=True)
+    defaults = INDEX_DEFAULTS[selected_symbol]
+    capital = float(get_secret("APP_CAPITAL") or 100000)
+    experience = get_secret("APP_EXPERIENCE") or "Intermediate"
+    strike_step = int(get_secret(f"{selected_symbol}_STRIKE_STEP") or defaults["strike_step"])
+    lot_size = int(get_secret(f"{selected_symbol}_LOT_SIZE") or defaults["lot_size"])
 
-        with st.expander("Live Data Provider", expanded=True):
-            use_live_data = st.toggle("Fetch live option data", value=False)
-            data_provider = st.selectbox(
-                "Provider",
-                ["Angel One SmartAPI", "NSE website polling", "Custom broker/vendor JSON"],
+    auto_refresh_count = None
+    if st_autorefresh:
+        auto_refresh_count = st_autorefresh(interval=int(get_secret("APP_REFRESH_SECONDS") or 15) * 1000, key="live_data_autorefresh")
+
+    if st.session_state.get("selected_symbol") != selected_symbol:
+        st.session_state["selected_symbol"] = selected_symbol
+        st.session_state.pop("snapshot", None)
+        st.session_state.pop("price_history", None)
+
+    snapshot = st.session_state.get("snapshot")
+    reference_spot = float(snapshot.spot) if snapshot else SPOT_HINTS.get(selected_symbol, 1000.0)
+    should_fetch = (
+        snapshot is None
+        or st.button("Refresh live data", use_container_width=False)
+        or (auto_refresh_count is not None and auto_refresh_count != st.session_state.get("last_refresh_count"))
+    )
+
+    if should_fetch:
+        st.session_state["last_refresh_count"] = auto_refresh_count
+        try:
+            snapshot = fetch_live_snapshot(
+                provider="Angel One SmartAPI",
+                symbol=selected_symbol,
+                custom_url="",
+                custom_token="",
+                angel_api_key=get_secret("ANGEL_API_KEY"),
+                angel_client_code=get_secret("ANGEL_CLIENT_CODE"),
+                angel_password=get_secret("ANGEL_PIN") or get_secret("ANGEL_PASSWORD"),
+                angel_totp=get_secret("ANGEL_TOTP_SECRET") or get_secret("ANGEL_TOTP"),
+                spot_hint=reference_spot,
+                strike_step=strike_step,
             )
-            live_symbol = st.text_input("NSE symbol", value=symbol if symbol != "STOCK OPTION" else "RELIANCE")
-            custom_url = ""
-            custom_token = ""
-            angel_api_key = ""
-            angel_client_code = ""
-            angel_password = ""
-            angel_totp = ""
-            if data_provider == "Custom broker/vendor JSON":
-                custom_url = st.text_input("JSON endpoint URL", placeholder="https://your-data-provider/option-chain")
-                custom_token = st.text_input("Bearer token", type="password")
-            elif data_provider == "Angel One SmartAPI":
-                st.caption("Credentials are used for this session only. They are not written to project files.")
-                angel_api_key = st.text_input(
-                    "Angel API key",
-                    value=os.getenv("ANGEL_API_KEY", ""),
-                    type="password",
-                )
-                angel_client_code = st.text_input(
-                    "Angel client code",
-                    value=os.getenv("ANGEL_CLIENT_CODE", ""),
-                )
-                angel_password = st.text_input(
-                    "Angel PIN / password",
-                    value=os.getenv("ANGEL_PIN", ""),
-                    type="password",
-                )
-                angel_totp = st.text_input(
-                    "6-digit TOTP or TOTP secret",
-                    value=os.getenv("ANGEL_TOTP_SECRET", ""),
-                    type="password",
-                )
-                if all([angel_api_key, angel_client_code, angel_password, angel_totp]):
-                    st.caption("Angel credentials are ready for refresh.")
-        expiry_choice = None
-        snapshot = st.session_state.get("snapshot")
-        reference_spot = float(snapshot.spot) if snapshot else 24176.15
-        auto_refresh_count = None
+            st.session_state["snapshot"] = snapshot
+            st.session_state["last_snapshot"] = snapshot
+        except MarketDataError as exc:
+            st.error(str(exc))
+        except Exception as exc:
+            st.error(f"Angel One SmartAPI failed: {exc}")
 
-        if use_live_data:
-            auto_refresh = st.checkbox("Auto refresh", value=False)
-            refresh_seconds = st.select_slider("Refresh interval", options=[5, 10, 15, 30, 60], value=15)
-            if auto_refresh and st_autorefresh:
-                auto_refresh_count = st_autorefresh(
-                    interval=refresh_seconds * 1000,
-                    key="live_data_autorefresh",
-                )
-            elif auto_refresh and not st_autorefresh:
-                st.caption("Install streamlit-autorefresh to enable timed refresh on Streamlit Cloud.")
-            col_a, col_b = st.columns(2)
-            credentials_ready = (
-                data_provider != "Angel One SmartAPI"
-                or all([angel_api_key, angel_client_code, angel_password, angel_totp])
-            )
-            fetch_clicked = col_a.button(
-                "Refresh",
-                use_container_width=True,
-                disabled=not credentials_ready,
-            )
-            clear_clicked = col_b.button("Manual", use_container_width=True)
-            if data_provider == "Angel One SmartAPI" and not credentials_ready:
-                st.caption("Enter all Angel fields to enable Refresh.")
-            if clear_clicked:
-                st.session_state.pop("snapshot", None)
-                st.session_state.pop("snapshot_symbol", None)
-            auto_tick = auto_refresh_count is not None and auto_refresh_count != st.session_state.get("last_refresh_count")
-            if fetch_clicked or auto_tick:
-                st.session_state["last_refresh_count"] = auto_refresh_count
-                with st.spinner(f"Fetching {data_provider} data..."):
-                    try:
-                        snapshot = fetch_live_snapshot(
-                            provider=data_provider,
-                            symbol=live_symbol,
-                            custom_url=custom_url,
-                            custom_token=custom_token,
-                            angel_api_key=angel_api_key,
-                            angel_client_code=angel_client_code,
-                            angel_password=angel_password,
-                            angel_totp=angel_totp,
-                            spot_hint=reference_spot,
-                            strike_step=int(defaults["strike_step"]),
-                        )
-                        st.session_state["snapshot"] = snapshot
-                        st.session_state["snapshot_symbol"] = live_symbol.upper()
-                    except MarketDataError as exc:
-                        st.error(str(exc))
-                    except Exception as exc:
-                        st.error(f"{data_provider} failed: {exc}")
-            snapshot = st.session_state.get("snapshot")
+    snapshot = st.session_state.get("snapshot")
+    if not snapshot:
+        st.error("Live Angel data is required. Add Angel secrets in Streamlit Cloud, then refresh the app.")
+        st.stop()
 
-            if snapshot:
-                expiry_choice = st.selectbox(
-                    "Expiry",
-                    snapshot.expiries,
-                    index=snapshot.expiries.index(snapshot.selected_expiry),
-                )
-                if expiry_choice != snapshot.selected_expiry:
-                    with st.spinner("Fetching selected expiry..."):
-                        try:
-                            snapshot = fetch_live_snapshot(
-                                provider=data_provider,
-                                symbol=live_symbol,
-                                custom_url=custom_url,
-                                custom_token=custom_token,
-                                angel_api_key=angel_api_key,
-                                angel_client_code=angel_client_code,
-                                angel_password=angel_password,
-                                angel_totp=angel_totp,
-                                spot_hint=reference_spot,
-                                strike_step=int(defaults["strike_step"]),
-                                expiry=expiry_choice,
-                            )
-                            st.session_state["snapshot"] = snapshot
-                        except MarketDataError as exc:
-                            st.error(str(exc))
-                st.success(f"{snapshot.source}: {snapshot.timestamp}")
-
-        live_spot = float(snapshot.spot) if snapshot else 24176.15
-
-        with st.expander("Account Settings", expanded=True):
-            capital = st.number_input("Trading capital (INR)", min_value=1000.0, value=100000.0, step=5000.0)
-            experience = st.selectbox("Experience", ["Beginner", "Intermediate", "Advanced"])
-            strike_step = st.number_input("Strike interval", min_value=1, value=int(defaults["strike_step"]), step=1)
-            lot_size = st.number_input("Lot size", min_value=1, value=int(defaults["lot_size"]), step=1)
-            st.caption("Market view, levels, and risk are now calculated automatically from live data.")
-
-        with st.expander("Gemini AI Brief", expanded=False):
-            st.text_input(
-                "Gemini API key",
-                value=get_secret("GEMINI_API_KEY"),
-                key="gemini_api_key",
-                type="password",
-            )
-            st.text_input(
-                "Gemini model",
-                value=get_secret("GEMINI_MODEL") or "gemini-2.5-flash",
-                key="gemini_model",
-            )
-            st.caption("Used only when you click Generate AI Brief. Do not commit keys to GitHub.")
-
-    if snapshot:
-        st.session_state["last_snapshot"] = snapshot
-
+    st.caption(f"Connected: {snapshot.source} | {snapshot.symbol} | {snapshot.selected_expiry} | {snapshot.timestamp}")
     return build_auto_analysis(
-        symbol=symbol,
-        spot=live_spot,
-        strike_step=int(strike_step),
-        lot_size=int(lot_size),
+        symbol=selected_symbol,
+        spot=float(snapshot.spot),
+        strike_step=strike_step,
+        lot_size=lot_size,
         capital=capital,
         experience=experience,
         snapshot=snapshot,
@@ -833,13 +749,13 @@ def render_risk_console(view: MarketView, suggestions: list[StrategyIdea]) -> No
 def render_ai_brief(view: MarketView, suggestions: list[StrategyIdea], snapshot) -> None:
     st.markdown('<div class="section-title"><h3>Gemini AI Brief</h3><span>cautious commentary from current inputs</span></div>', unsafe_allow_html=True)
     st.write("Generate a concise market brief from the current inputs, strategy scores, and live option-chain summary.")
-    key = st.session_state.get("gemini_api_key", "") or get_secret("GEMINI_API_KEY")
-    model = st.session_state.get("gemini_model", "") or get_secret("GEMINI_MODEL") or "gemini-2.5-flash"
+    key = get_secret("GEMINI_API_KEY")
+    model = get_secret("GEMINI_MODEL") or "gemini-2.5-flash"
     col1, col2 = st.columns([1, 2])
     generate = col1.button("Generate AI Brief", use_container_width=True, disabled=not bool(key.strip()))
     col2.caption(f"Model: {model}. The brief is educational only and should be verified against live market data.")
     if not key.strip():
-        st.info("Add a Gemini API key in the sidebar, environment, or Streamlit secrets.")
+        st.info("Add GEMINI_API_KEY in Streamlit secrets to enable the AI brief.")
 
     if generate:
         with st.spinner("Asking Gemini for a cautious options brief..."):

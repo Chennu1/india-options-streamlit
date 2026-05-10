@@ -11,6 +11,7 @@ import requests
 NSE_HOME = "https://www.nseindia.com"
 ANGEL_SCRIP_MASTER = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
 INDEX_SYMBOLS = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
+ANGEL_INDEX_EXCHANGES = {"NIFTY": "NFO", "BANKNIFTY": "NFO", "FINNIFTY": "NFO", "MIDCPNIFTY": "NFO", "SENSEX": "BFO"}
 
 
 @dataclass
@@ -206,11 +207,14 @@ def fetch_angel_snapshot(
         raise MarketDataError(f"Angel login failed: {session}")
 
     instruments = fetch_angel_instruments()
-    option_rows = filter_angel_options(instruments, clean_symbol, spot_hint, strike_step, expiry, strikes_each_side)
+    live_spot = fetch_angel_index_spot(smart_api, instruments, clean_symbol, spot_hint)
+    option_rows = filter_angel_options(instruments, clean_symbol, live_spot, strike_step, expiry, strikes_each_side)
     if not option_rows:
         raise MarketDataError("No Angel option tokens found. Check symbol, expiry, and strike range.")
 
-    exchange_tokens = {"NFO": [row["token"] for row in option_rows]}
+    exchange_tokens: dict[str, list[str]] = {}
+    for row in option_rows:
+        exchange_tokens.setdefault(str(row.get("exch_seg", "NFO")), []).append(row["token"])
     quotes = smart_api.getMarketData("FULL", exchange_tokens)
     if not quotes or quotes.get("status") is False:
         raise MarketDataError(f"Angel market data failed: {quotes}")
@@ -223,13 +227,13 @@ def fetch_angel_snapshot(
 
     return OptionChainSnapshot(
         symbol=clean_symbol,
-        spot=spot_hint,
+        spot=live_spot,
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
         expiries=expiries,
         selected_expiry=selected_expiry,
         pcr=calculate_pcr(normalized_rows),
-        support=highest_oi_strike(normalized_rows, "PE", spot_hint),
-        resistance=highest_oi_strike(normalized_rows, "CE", spot_hint),
+        support=highest_oi_strike(normalized_rows, "PE", live_spot),
+        resistance=highest_oi_strike(normalized_rows, "CE", live_spot),
         avg_iv=calculate_avg_iv(normalized_rows),
         rows=normalized_rows,
         source="Angel One SmartAPI quotes",
@@ -286,6 +290,45 @@ def fetch_angel_instruments() -> list[dict[str, Any]]:
     return payload
 
 
+def fetch_angel_index_spot(
+    smart_api: Any,
+    instruments: list[dict[str, Any]],
+    symbol: str,
+    fallback: float,
+) -> float:
+    index_row = find_angel_index_row(instruments, symbol)
+    if not index_row:
+        return fallback
+    exchange = str(index_row.get("exch_seg", "NSE"))
+    token = str(index_row.get("token", "")).strip()
+    if not token:
+        return fallback
+    try:
+        response = smart_api.getMarketData("LTP", {exchange: [token]})
+    except Exception:
+        return fallback
+    if not response or response.get("status") is False:
+        return fallback
+    fetched = (response.get("data") or {}).get("fetched") or []
+    if not fetched:
+        return fallback
+    return first_present(fetched[0], ["ltp", "lastPrice", "lastTradedPrice"]) or fallback
+
+
+def find_angel_index_row(instruments: list[dict[str, Any]], symbol: str) -> dict[str, Any] | None:
+    preferred_exchange = "BSE" if symbol == "SENSEX" else "NSE"
+    for row in instruments:
+        name = str(row.get("name", "")).upper()
+        instrument_type = str(row.get("instrumenttype", "")).upper()
+        exchange = str(row.get("exch_seg", "")).upper()
+        if name == symbol and instrument_type == "AMXIDX" and exchange == preferred_exchange:
+            return row
+    for row in instruments:
+        if str(row.get("symbol", "")).upper() == symbol and str(row.get("exch_seg", "")).upper() == preferred_exchange:
+            return row
+    return None
+
+
 def filter_angel_options(
     instruments: list[dict[str, Any]],
     symbol: str,
@@ -318,7 +361,9 @@ def is_angel_option(row: dict[str, Any], symbol: str) -> bool:
     instrument_type = str(row.get("instrumenttype", "")).upper()
     name = str(row.get("name", "")).upper()
     token = str(row.get("token", "")).strip()
-    return exch == "NFO" and instrument_type in {"OPTIDX", "OPTSTK"} and name == symbol and bool(token)
+    expected_exchange = ANGEL_INDEX_EXCHANGES.get(symbol)
+    exchange_ok = exch == expected_exchange if expected_exchange else exch in {"NFO", "BFO"}
+    return exchange_ok and instrument_type in {"OPTIDX", "OPTSTK"} and name == symbol and bool(token)
 
 
 def parse_angel_strike(value: Any) -> float:
